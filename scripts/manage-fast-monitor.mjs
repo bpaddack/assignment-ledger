@@ -3,6 +3,7 @@ import { closeSync, existsSync, openSync, readFileSync, rmSync, writeFileSync } 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { processRoots, projectProcesses, stopProcessTree } from "./process-management.mjs";
 
 const projectPath = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dataPath = join(projectPath, "data", "assignment-ledger");
@@ -10,17 +11,25 @@ const pidPath = join(dataPath, "fast-monitor-service.json");
 const logPath = join(dataPath, "fast-monitor.log");
 const monitorPath = join(projectPath, "scripts", "slack-fast-monitor.mjs");
 
-function live(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
+const markers = ["scripts/slack-fast-monitor.mjs --watch"];
+function managed() { return projectProcesses(projectPath, markers); }
 function state() {
   if (!existsSync(pidPath)) return null;
-  try { const value = JSON.parse(readFileSync(pidPath, "utf8")); return live(value.pid) ? value : null; }
+  try {
+    const value = JSON.parse(readFileSync(pidPath, "utf8"));
+    return managed().some(({ pid }) => pid === Number(value.pid)) ? value : null;
+  }
   catch { return null; }
 }
 
 const command = process.argv[2] || "status";
 if (command === "start") {
   const existing = state();
-  if (existing) { console.log(JSON.stringify({ running: true, ...existing })); process.exit(0); }
+  if (existing) {
+    for (const root of processRoots(managed())) if (root.pid !== Number(existing.pid)) stopProcessTree(root.pid);
+    console.log(JSON.stringify({ running: true, ...existing })); process.exit(0);
+  }
+  for (const root of processRoots(managed())) stopProcessTree(root.pid);
   rmSync(pidPath, { force: true });
   const logFd = openSync(logPath, "a");
   const child = spawn(process.execPath, [monitorPath, "--watch"], { cwd: projectPath, detached: true, windowsHide: true, stdio: ["ignore", logFd, logFd] });
@@ -29,8 +38,7 @@ if (command === "start") {
   writeFileSync(pidPath, JSON.stringify(value, null, 2), "utf8");
   console.log(JSON.stringify({ running: true, ...value }));
 } else if (command === "stop") {
-  const existing = state();
-  if (existing) process.kill(existing.pid);
+  for (const root of processRoots(managed())) stopProcessTree(root.pid);
   rmSync(pidPath, { force: true });
   console.log(JSON.stringify({ running: false }));
 } else if (command === "status") {

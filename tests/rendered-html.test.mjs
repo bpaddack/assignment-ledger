@@ -67,8 +67,10 @@ test("listener emits cross-platform desktop notifications only for new inbound c
 });
 
 test("portable launcher exposes the friendly loopback-only hostname", async () => {
-  const [launcher, service, proxy, configurator] = await Promise.all([
+  const [launcher, appManager, manager, service, proxy, configurator] = await Promise.all([
     readFile(new URL("../scripts/launch-dashboard.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/manage-app.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/manage-dashboard-service.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/dashboard-service.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/tasks-localhost-proxy.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/configure-friendly-host.mjs", import.meta.url), "utf8"),
@@ -76,12 +78,19 @@ test("portable launcher exposes the friendly loopback-only hostname", async () =
   assert.match(launcher, /http:\/\/tasks\.localhost/);
   assert.match(launcher, /http:\/\/localhost:3000/);
   assert.match(launcher, /manage-fast-monitor\.mjs/);
-  assert.match(launcher, /dashboard-service\.mjs/);
+  assert.match(launcher, /manage-dashboard-service\.mjs/);
+  assert.match(launcher, /explorer\.exe/);
+  assert.doesNotMatch(launcher, /spawn\("cmd"/);
   assert.doesNotMatch(launcher, /spawn\(npm, \["run", "dev"\]/);
   assert.match(launcher, /detached: true/);
   assert.match(service, /node_modules["'], ["']vinext["'], ["']dist["'], ["']cli\.js/);
   assert.match(service, /detached: false/);
   assert.match(service, /dashboard-service\.json/);
+  assert.match(service, /createFriendlyProxy/);
+  assert.match(manager, /stopProcessTree/);
+  assert.match(manager, /restart/);
+  assert.match(appManager, /manage-fast-monitor\.mjs/);
+  assert.match(appManager, /manage-dashboard-service\.mjs/);
   assert.match(proxy, /listenHost = "127\.0\.0\.1"/);
   assert.match(proxy, /targetHost = "localhost"/);
   assert.match(proxy, /listenPort = 80/);

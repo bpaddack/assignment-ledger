@@ -64,6 +64,8 @@ npm run launch
 
 `npm run launch` starts the dashboard and fast listener without leaving a visible terminal window, then opens `http://tasks.localhost` in the default browser.
 
+The launcher reuses a healthy instance and removes stale project-owned processes before starting. Use `npm run app:status`, `npm run app:restart`, or `npm run app:stop` to manage the complete local app without leaving orphaned dashboard, proxy, or listener processes.
+
 ## Useful commands
 
 ```powershell
