@@ -1,0 +1,20 @@
+{
+  "manager": {
+    "name": "",
+    "slackUserId": "",
+    "slackHandle": "",
+    "timezone": ""
+  },
+  "workspace": {
+    "host": "",
+    "teamId": ""
+  },
+  "assignees": [],
+  "monitor": {
+    "cadenceMinutes": 15,
+    "fastCadenceMinutes": 2,
+    "fastOverlapMinutes": 600,
+    "backfillDays": 1,
+    "captureInbound": true
+  }
+}

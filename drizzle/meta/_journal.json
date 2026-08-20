@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1787087307106,
+      "tag": "0000_clear_magus",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787089450185,
+      "tag": "0001_wise_flatman",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787108618091,
+      "tag": "0002_new_joshua_kane",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1787109239550,
+      "tag": "0003_yellow_professor_monster",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787162595573,
+      "tag": "0004_nifty_agent_zero",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787162619482,
+      "tag": "0005_majestic_cable",
+      "breakpoints": true
+    }
+  ]
+}
