@@ -12,7 +12,7 @@
   "assignees": [],
   "monitor": {
     "cadenceMinutes": 15,
-    "fastCadenceMinutes": 2,
+    "fastCadenceMinutes": 5,
     "fastOverlapMinutes": 600,
     "backfillDays": 1,
     "captureInbound": true

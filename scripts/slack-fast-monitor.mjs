@@ -15,7 +15,7 @@ const monitorId = "slack_fast_lane";
 const workspace = config.workspace.host;
 const manager = config.manager;
 const assigneeById = new Map(config.assignees.map((person) => [person.slackUserId, person]));
-const cadenceMs = Math.max(1, Number(config.monitor.fastCadenceMinutes) || 2) * 60_000;
+const cadenceMs = Math.max(1, Number(config.monitor.fastCadenceMinutes) || 5) * 60_000;
 const overlapSeconds = Math.max(60, Number(config.monitor.fastOverlapMinutes) || 600);
 
 mkdirSync(dataPath, { recursive: true });

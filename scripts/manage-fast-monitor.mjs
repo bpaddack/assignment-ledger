@@ -10,6 +10,8 @@ const dataPath = join(projectPath, "data", "assignment-ledger");
 const pidPath = join(dataPath, "fast-monitor-service.json");
 const logPath = join(dataPath, "fast-monitor.log");
 const monitorPath = join(projectPath, "scripts", "slack-fast-monitor.mjs");
+const trackerConfig = JSON.parse(readFileSync(join(projectPath, "config", "tracker.json"), "utf8"));
+const cadenceMinutes = Math.max(1, Number(trackerConfig.monitor?.fastCadenceMinutes) || 5);
 
 const markers = ["scripts/slack-fast-monitor.mjs --watch"];
 function managed() { return projectProcesses(projectPath, markers); }
@@ -34,7 +36,7 @@ if (command === "start") {
   const logFd = openSync(logPath, "a");
   const child = spawn(process.execPath, [monitorPath, "--watch"], { cwd: projectPath, detached: true, windowsHide: true, stdio: ["ignore", logFd, logFd] });
   child.unref(); closeSync(logFd);
-  const value = { pid: child.pid, startedAt: new Date().toISOString(), cadenceMinutes: 2, logPath };
+  const value = { pid: child.pid, startedAt: new Date().toISOString(), cadenceMinutes, logPath };
   writeFileSync(pidPath, JSON.stringify(value, null, 2), "utf8");
   console.log(JSON.stringify({ running: true, ...value }));
 } else if (command === "stop") {
