@@ -1,11 +1,13 @@
 # Slack Assignment Ledger — Portable Package
 
+Developed and authored by **Brent Paddack** ([bpaddack@cisco.com](mailto:bpaddack@cisco.com)).
+
 This source package recreates the local two-ledger productivity tool:
 
 - **Direct Report Assignments** tracks work delegated to a verified list of people.
 - **My Tasks and Assignments** tracks actionable Slack questions and requests directed to the manager.
 
-It includes the original dashboard design and behavior, durable local D1/SQLite storage, acknowledgement and progress timelines, due dates, manual completion, archive/unarchive controls, Slack permalinks, database-backed scan checkpoints, a two-minute dashboard-independent fast listener, the 15-minute comprehensive reconciliation prompt, and discreet desktop notifications for new requests directed to the user.
+It includes the original dashboard design and behavior, durable local D1/SQLite storage, acknowledgement and progress timelines, due dates, manual completion, archive/unarchive controls, Slack permalinks, database-backed scan checkpoints, a five-minute dashboard-independent fast listener, the 15-minute comprehensive reconciliation prompt, and discreet desktop notifications for new requests directed to the user.
 
 Source controls open the original Slack HTTPS permalink directly; the user's browser and Slack preferences decide whether that link stays in the browser or opens in Slack. Completed summary totals cover the current local calendar day and reset at midnight. Requester filters are scoped to the records present in the selected status view.
 

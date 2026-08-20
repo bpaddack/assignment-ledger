@@ -2,6 +2,10 @@
   "name": "direct-report-assignment-ledger",
   "version": "0.2.0",
   "private": true,
+  "author": {
+    "name": "Brent Paddack",
+    "email": "bpaddack@cisco.com"
+  },
   "engines": {
     "node": ">=22.13.0"
   },

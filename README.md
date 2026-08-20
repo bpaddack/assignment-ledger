@@ -7,9 +7,11 @@ A local, two-ledger productivity app that monitors Slack for:
 
 The dashboard, fast listener, and recurring Codex reconciliation share a durable local D1/SQLite database. Captures do not depend on the dashboard being open and are never posted to localhost.
 
+Developed and authored by **Brent Paddack** ([bpaddack@cisco.com](mailto:bpaddack@cisco.com)).
+
 ## Highlights
 
-- Two-minute high-confidence Slack listener with durable cursors and overlap
+- Five-minute high-confidence Slack listener with durable cursors and overlap
 - Comprehensive recurring Codex reconciliation for context and progress evidence
 - Separate delegated-work and inbound-request ledgers
 - Evidence-based acknowledgement and progress states
@@ -90,7 +92,7 @@ The legacy PowerShell helpers remain available, but listener database writes are
 | `config/tracker.package.json` | Unconfigured installation template |
 | `db/` and `drizzle/` | D1 schema and migrations |
 | `scripts/ledger-cli.mjs` | Cross-platform local database write interface |
-| `scripts/slack-fast-monitor.mjs` | Two-minute high-confidence listener |
+| `scripts/slack-fast-monitor.mjs` | Five-minute high-confidence listener |
 | `scripts/manage-fast-monitor.mjs` | Hidden background listener lifecycle |
 | `scripts/launch-dashboard.mjs` | Quiet dashboard/listener launcher |
 | `SETUP_WITH_CODEX.md` | Authoritative installation procedure |

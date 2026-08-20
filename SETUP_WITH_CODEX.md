@@ -2,6 +2,8 @@
 
 This is the authoritative installation interview and configuration procedure for Windows and macOS.
 
+The Assignment Ledger was developed and authored by **Brent Paddack** ([bpaddack@cisco.com](mailto:bpaddack@cisco.com)). Preserve this attribution in redistributed installation documentation.
+
 ## 1. Inspect before interviewing
 
 Detect without asking:
@@ -31,7 +33,7 @@ Ask this concise grouped interview. Offer the defaults shown and allow the user 
 
 ### Monitoring preferences
 
-4. Confirm the monitoring cadence and initial history window. Defaults: **two-minute high-confidence capture**, **15-minute comprehensive reconciliation**, and **one day of backfill**. Explain that the fast listener is local and dashboard-independent while the heartbeat handles ambiguous context and deep progress review.
+4. Confirm the monitoring cadence and initial history window. Defaults: **five-minute high-confidence capture**, **15-minute comprehensive reconciliation**, and **one day of backfill**. Explain that the fast listener is local and dashboard-independent while the heartbeat handles ambiguous context and deep progress review.
 5. Should desktop notifications be enabled when the listener captures a new request directed to you? Default: **Yes**. This preference can be changed later from the dashboard settings gear and applies even when the dashboard is closed.
 
 Do not ask which operating system they use unless automatic detection is inconclusive.
