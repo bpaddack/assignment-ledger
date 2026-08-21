@@ -13,7 +13,7 @@ button, input, select, textarea { font:inherit; }
 .settings-wrap { position:relative; }
 .settings-button { width:42px; height:42px; display:grid; place-items:center; border:1px solid var(--line); border-radius:50%; background:white; color:#526159; font-size:20px; line-height:1; cursor:pointer; box-shadow:0 1px 4px #17211d0d; }
 .settings-button:hover, .settings-button[aria-expanded="true"] { color:var(--green); border-color:#b8c9bf; background:#f9fbf8; }
-.quick-fetch-button { width:42px; height:42px; display:grid; place-items:center; border:1px solid #cbd9d1; border-radius:50%; background:#eaf4ee; color:var(--green); font-size:19px; line-height:1; cursor:pointer; box-shadow:0 1px 4px #17211d0d; transition:.18s ease; }
+.quick-fetch-button { width:42px; height:42px; display:grid; place-items:center; border:1px solid #cbd9d1; border-radius:50%; background:#eaf4ee; color:#526159; font-size:19px; line-height:1; cursor:pointer; box-shadow:0 1px 4px #17211d0d; transition:.18s ease; }
 .quick-fetch-button:hover { border-color:#9bb9a8; background:#dceee3; transform:translateY(-1px); }
 .quick-fetch-button span { color:currentColor; font-family:"Segoe UI Symbol","Arial Unicode MS",sans-serif; font-variant-emoji:text; }
 .quick-fetch-button:focus-visible { outline:3px solid #1f6b4f30; outline-offset:2px; }
