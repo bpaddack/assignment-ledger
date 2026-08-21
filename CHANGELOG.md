@@ -17,6 +17,7 @@ The project follows semantic versioning for tagged releases.
 - Changed the dashboard-independent fast Slack listener cadence from two minutes to five minutes.
 - Improved hidden process lifecycle management so app restarts clean up stale project-owned dashboard, proxy, and listener processes.
 - Added developer and author attribution for Brent Paddack to the installation documentation and package metadata.
+- Excluded automated Jira app notifications from inbound tasks and stopped URL query-string punctuation from being interpreted as a human question.
 
 ## [0.2.0] - 2026-08-19
 

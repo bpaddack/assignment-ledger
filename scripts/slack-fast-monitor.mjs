@@ -34,6 +34,7 @@ function tsToIso(ts) { return new Date(Number(ts) * 1000).toISOString(); }
 function minusSeconds(ts, seconds) { return (Math.max(0, Number(ts) - seconds)).toFixed(6); }
 function permalink(channel, ts) { return `https://${workspace}/archives/${channel}/p${String(ts).replace(".", "")}`; }
 function normalizeText(value) { return String(value || "").replace(/<@([A-Z0-9]+)>/g, (_, id) => assigneeById.get(id)?.name || (id === manager.slackUserId ? manager.name : `@${id}`)).replace(/\s+/g, " ").trim(); }
+function semanticText(value) { return String(value || "").replace(/<https?:\/\/[^>|]+(?:\|([^>]+))?>/gi, "$1").replace(/https?:\/\/\S+/gi, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim(); }
 function concise(value) { const text = normalizeText(value); return text.length > 360 ? `${text.slice(0, 357)}…` : text; }
 
 function localDateParts(ts) {
@@ -61,7 +62,11 @@ function requestType(text) {
   return "task";
 }
 
-export { dueDateFromText, managerAddressed, requestType };
+function automatedJiraNotification(message) {
+  return message.appId === "A2RPP3NFR" || message.botId === "B9PUPSKC5" || /\b(?:Automation for Jira|Jira Cloud)\b/i.test(message.text);
+}
+
+export { automatedJiraNotification, dueDateFromText, managerAddressed, requestType, semanticText };
 
 function messageShape(message, fallbackChannel) {
   const channelId = message.channel_id || message.channel?.id || fallbackChannel;
@@ -70,6 +75,9 @@ function messageShape(message, fallbackChannel) {
     channelId,
     ts: String(message.ts || message.timestamp || ""),
     userId: typeof userValue === "string" ? userValue : userValue?.id,
+    botId: message.bot_id || message.botId || null,
+    appId: message.app_id || message.appId || null,
+    subtype: message.subtype || null,
     text: normalizeText(message.text || message.content || message.message),
     threadTs: String(message.thread_ts || message.ts || ""),
   };
@@ -183,10 +191,11 @@ async function runCycle(options) {
     const profileCache = new Map(config.assignees.map((person) => [person.slackUserId, person.name])); profileCache.set(manager.slackUserId, manager.name);
     for (const message of seenMessages.values()) {
       const lowerBound = options.full ? Number(initialOldest) : Math.min(Number(cursorOldest("search:outbound")), Number(cursorOldest("search:inbound")));
-      if (!message.text || !message.ts || Number(message.ts) < lowerBound || Number(message.ts) > Number(ceilingTs) || greetingPattern.test(message.text)) continue;
+      if (!message.text || !message.ts || Number(message.ts) < lowerBound || Number(message.ts) > Number(ceilingTs) || greetingPattern.test(message.text) || automatedJiraNotification(message)) continue;
       const link = permalink(message.channelId, message.threadTs || message.ts);
-      const strong = actionPattern.test(message.text) || (message.text.includes("?") && !/^\s*(thanks?|thank you)\b/i.test(message.text));
-      const medium = strong || weakActionPattern.test(message.text);
+      const actionableText = semanticText(message.text);
+      const strong = actionPattern.test(actionableText) || (actionableText.includes("?") && !/^\s*(thanks?|thank you)\b/i.test(actionableText));
+      const medium = strong || weakActionPattern.test(actionableText);
       if (message.userId === manager.slackUserId) {
         const targets = new Set(mentionedAssignees(message.rawText));
         if (message.dmUserId && assigneeById.has(message.dmUserId)) targets.add(message.dmUserId);
@@ -203,7 +212,7 @@ async function runCycle(options) {
         if (!directlyAddressed) continue;
         const dedupeKey = `slack-inbound-${message.channelId}-${message.ts}`;
         if (knownMyTasks.has(dedupeKey)) continue;
-        if (strong) myTasks.push({ requester: await profileName(client, message.userId, profileCache), requestType: requestType(message.text), task: concise(message.text), threadUrl: link, askedAt: tsToIso(message.ts), dueDate: dueDateFromText(message.text, message.ts), dedupeKey });
+        if (strong) myTasks.push({ requester: await profileName(client, message.userId, profileCache), requestType: requestType(actionableText), task: concise(message.text), threadUrl: link, askedAt: tsToIso(message.ts), dueDate: dueDateFromText(message.text, message.ts), dedupeKey });
         else if (!knownCandidates.has(dedupeKey)) candidates.push({ dedupeKey, ledger: "inbound", channelId: message.channelId, messageTs: message.ts, authorId: message.userId, targetId: manager.slackUserId, text: concise(message.text), threadUrl: link, reason: medium ? "Manager addressed; requires semantic confirmation." : "Manager addressed without an explicit action phrase; requires contextual review." });
       }
     }
