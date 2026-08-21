@@ -13,7 +13,8 @@
   "monitor": {
     "cadenceMinutes": 15,
     "fastCadenceMinutes": 5,
-    "fastOverlapMinutes": 600,
+    "fastOverlapMinutes": 10,
+    "searchOverlapMinutes": 1440,
     "backfillDays": 1,
     "captureInbound": true
   }

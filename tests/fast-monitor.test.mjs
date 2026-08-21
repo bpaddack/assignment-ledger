@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { automatedJiraNotification, dueDateFromText, managerAddressed, requestType, semanticText } from "../scripts/slack-fast-monitor.mjs";
+import { automatedJiraNotification, configuredWindowSeconds, dueDateFromText, managerAddressed, requestType, semanticText } from "../scripts/slack-fast-monitor.mjs";
 
 const tracker = JSON.parse(readFileSync(new URL("../config/tracker.json", import.meta.url), "utf8"));
 
@@ -22,4 +22,10 @@ test("fast monitor excludes Jira automation and ignores URL query punctuation", 
   assert.equal(automatedJiraNotification({ appId: "A2RPP3NFR", botId: "B9PUPSKC5", text: "Automation for Jira commented on a Request you are watching" }), true);
   assert.equal(semanticText("Notification https://splunk.atlassian.net/browse/DBO-30170?focusedCommentId=1").includes("?"), false);
   assert.equal(requestType(semanticText("Notification https://example.test/item?x=1")), "task");
+});
+
+test("fast monitor converts configured minutes to seconds and keeps a full-day search overlap", () => {
+  assert.equal(configuredWindowSeconds(10, 10), 600);
+  assert.equal(configuredWindowSeconds(600, 10), 36_000);
+  assert.equal(configuredWindowSeconds(undefined, 1440, 1440), 86_400);
 });

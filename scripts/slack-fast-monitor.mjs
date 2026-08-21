@@ -16,7 +16,12 @@ const workspace = config.workspace.host;
 const manager = config.manager;
 const assigneeById = new Map(config.assignees.map((person) => [person.slackUserId, person]));
 const cadenceMs = Math.max(1, Number(config.monitor.fastCadenceMinutes) || 5) * 60_000;
-const overlapSeconds = Math.max(60, Number(config.monitor.fastOverlapMinutes) || 600);
+function configuredWindowSeconds(value, fallbackMinutes, minimumMinutes = 1) {
+  return Math.max(minimumMinutes, Number(value) || fallbackMinutes) * 60;
+}
+
+const overlapSeconds = configuredWindowSeconds(config.monitor.fastOverlapMinutes, 10);
+const searchOverlapSeconds = configuredWindowSeconds(config.monitor.searchOverlapMinutes, 24 * 60, 24 * 60);
 
 mkdirSync(dataPath, { recursive: true });
 
@@ -66,7 +71,7 @@ function automatedJiraNotification(message) {
   return message.appId === "A2RPP3NFR" || message.botId === "B9PUPSKC5" || /\b(?:Automation for Jira|Jira Cloud)\b/i.test(message.text);
 }
 
-export { automatedJiraNotification, dueDateFromText, managerAddressed, requestType, semanticText };
+export { automatedJiraNotification, configuredWindowSeconds, dueDateFromText, managerAddressed, requestType, semanticText };
 
 function messageShape(message, fallbackChannel) {
   const channelId = message.channel_id || message.channel?.id || fallbackChannel;
@@ -136,7 +141,7 @@ async function profileName(client, userId, cache) {
   if (!userId) return "Unknown requester";
   if (cache.has(userId)) return cache.get(userId);
   try {
-    const result = await client.call("slack_user_profile", { workspace, user: userId });
+    const result = await client.call("slack_user_profile", { workspace, identifier: userId });
     const user = result.user || result.profile || result;
     const name = user.profile?.display_name || user.profile?.real_name || user.display_name || user.real_name || user.name || userId;
     cache.set(userId, name); return name;
@@ -161,8 +166,8 @@ async function runCycle(options) {
     const state = JSON.parse(ledgerCommand(["get-fast-monitor-state", "--monitor-id", monitorId]));
     const knownAssignments = new Set(state.assignmentKeys || []), knownMyTasks = new Set(state.myTaskKeys || []), knownCandidates = new Set(state.candidateKeys || []);
     const initialOldest = minusSeconds(ceilingTs, options.full ? 15 * 60 : Math.max(overlapSeconds, 15 * 60));
-    const cursorOldest = (key) => minusSeconds(state.cursors?.[key] || initialOldest, overlapSeconds);
-    const afterDate = new Date(Number(options.full ? initialOldest : cursorOldest("search:outbound")) * 1000).toISOString().slice(0, 10);
+    const cursorOldest = (key, windowSeconds = overlapSeconds) => minusSeconds(state.cursors?.[key] || initialOldest, windowSeconds);
+    const afterDate = new Date(Number(options.full ? initialOldest : cursorOldest("search:outbound", searchOverlapSeconds)) * 1000).toISOString().slice(0, 10);
     const [ims, outboundSearch, inboundMentionSearch, inboundNameSearch] = await Promise.all([
       listAllIms(client),
       searchAll(client, `from:@${manager.slackHandle} after:${afterDate}`),
@@ -190,7 +195,7 @@ async function runCycle(options) {
 
     const profileCache = new Map(config.assignees.map((person) => [person.slackUserId, person.name])); profileCache.set(manager.slackUserId, manager.name);
     for (const message of seenMessages.values()) {
-      const lowerBound = options.full ? Number(initialOldest) : Math.min(Number(cursorOldest("search:outbound")), Number(cursorOldest("search:inbound")));
+      const lowerBound = options.full ? Number(initialOldest) : Math.min(Number(cursorOldest("search:outbound", searchOverlapSeconds)), Number(cursorOldest("search:inbound", searchOverlapSeconds)));
       if (!message.text || !message.ts || Number(message.ts) < lowerBound || Number(message.ts) > Number(ceilingTs) || greetingPattern.test(message.text) || automatedJiraNotification(message)) continue;
       const link = permalink(message.channelId, message.threadTs || message.ts);
       const actionableText = semanticText(message.text);

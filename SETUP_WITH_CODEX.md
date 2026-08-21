@@ -64,7 +64,7 @@ Update `config/tracker.json` with:
 - verified Slack workspace host and workspace team ID;
 - exact assignee names and user IDs;
 - cadence, backfill days, and inbound-capture preference.
-- fast-listener cadence and overlap window (`fastCadenceMinutes` and `fastOverlapMinutes`).
+- fast-listener cadence, changed-DM overlap, and delayed-search-index overlap (`fastCadenceMinutes`, `fastOverlapMinutes`, and `searchOverlapMinutes`). Keep `searchOverlapMinutes` at 1440 or greater so delayed Slack search indexing is reprocessed for at least one day.
 
 Names written to the configuration are the canonical dashboard names. Do not leave example identities or placeholder values.
 
