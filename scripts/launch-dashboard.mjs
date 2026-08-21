@@ -60,4 +60,6 @@ if (monitorStart.status !== 0) {
   process.exit(monitorStart.status || 1);
 }
 if (openOnLaunch) openBrowser();
-console.log(`Assignment Ledger is running at ${address}. The fast Slack listener is active.`);
+let monitorState = { paused: false };
+try { monitorState = JSON.parse(monitorStart.stdout.trim()); } catch { /* status already validated */ }
+console.log(`Assignment Ledger is running at ${address}. The Slack listener is ${monitorState.paused ? "paused" : "active"}.`);

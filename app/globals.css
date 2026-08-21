@@ -27,6 +27,12 @@ button, input, select, textarea { font:inherit; }
 .notification-setting input:checked + i { background:var(--green); }
 .notification-setting input:checked + i::after { transform:translateX(18px); }
 .notification-setting input:focus-visible + i { outline:3px solid #1f6b4f30; outline-offset:2px; }
+.notification-setting input:disabled + i { opacity:.5; cursor:wait; }
+.settings-divider { height:1px; margin:16px 0 !important; background:var(--line); }
+.manual-fetch { display:grid; gap:7px; margin:14px 0 2px; padding:12px; border-radius:11px; background:#f4f7f3; }
+.manual-fetch button { border:0; border-radius:9px; padding:10px 12px; background:var(--ink); color:white; font-size:12px; font-weight:750; cursor:pointer; }
+.manual-fetch button:disabled { opacity:.6; cursor:wait; }
+.manual-fetch small { color:var(--muted); font-size:11px; line-height:1.4; }
 .topbar { display:flex; align-items:flex-end; justify-content:space-between; gap:28px; margin-bottom:34px; }
 .eyebrow { margin:0 0 10px; color:var(--green); font-weight:750; font-size:12px; letter-spacing:.14em; text-transform:uppercase; }
 h1 { margin:0; font-family:Georgia, "Times New Roman", serif; font-size:clamp(42px, 6vw, 72px); font-weight:500; letter-spacing:-.045em; line-height:.95; }
@@ -44,6 +50,8 @@ h1 { margin:0; font-family:Georgia, "Times New Roman", serif; font-size:clamp(42
 .ledger-head p { margin:0; color:var(--muted); font-size:14px; }
 .live { display:inline-flex; align-items:center; gap:8px; color:var(--green); background:#eaf4ee; border-radius:99px; padding:7px 11px; font-size:12px; font-weight:700; white-space:nowrap; }
 .live i { width:7px; height:7px; background:#2aa86f; border-radius:50%; box-shadow:0 0 0 4px #d3eadc; }
+.live.paused { color:#6f7b74; background:#ecefed; }
+.live.paused i { background:#9aa49e; box-shadow:0 0 0 4px #dfe3e0; }
 .empty { min-height:300px; display:grid; place-items:center; align-content:center; text-align:center; padding:40px; }
 .empty-mark { width:50px; height:50px; display:grid; place-items:center; border-radius:50%; background:var(--lime); font-weight:900; font-size:22px; margin-bottom:18px; }
 .empty h3 { margin:0 0 8px; font-size:20px; }

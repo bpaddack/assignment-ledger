@@ -13,6 +13,8 @@ Developed and authored by **Brent Paddack** ([bpaddack@cisco.com](mailto:bpaddac
 
 - Five-minute high-confidence Slack listener with durable cursors and overlap
 - Comprehensive recurring Codex reconciliation for context and progress evidence
+- Database-backed monitor pause/resume slider
+- Manual full 15-minute Slack fetch while monitoring is paused
 - Separate delegated-work and inbound-request ledgers
 - Evidence-based acknowledgement and progress states
 - Due dates resolved in the configured user's local timezone
@@ -67,6 +69,8 @@ npm run launch
 `npm run launch` starts the dashboard and fast listener without leaving a visible terminal window, then opens `http://tasks.localhost` in the default browser.
 
 The launcher reuses a healthy instance and removes stale project-owned processes before starting. Use `npm run app:status`, `npm run app:restart`, or `npm run app:stop` to manage the complete local app without leaving orphaned dashboard, proxy, or listener processes.
+
+The settings gear can pause local discovery and the Codex heartbeat. A paused heartbeat performs only one inexpensive local control check and exits without contacting Slack. While paused, **Fetch latest tasks & assignments** runs one isolated, single-instance 15-minute discovery window in a hidden local process. High-confidence items are captured immediately; ambiguous items remain queued for Codex review after monitoring resumes.
 
 ## Useful commands
 

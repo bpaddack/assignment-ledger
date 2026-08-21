@@ -37,9 +37,12 @@ test("source defines inbound capture and durable checkpoint storage", async () =
   assert.match(tracker, /Desktop notifications/);
   assert.match(tracker, /api\/settings\/notifications/);
   assert.match(tracker, /even when the dashboard is closed/);
-  assert.match(tracker, /task\.source==="monitor"/);
-  assert.match(tracker, /Notification settings/);
-  assert.match(tracker, /Assignments you give to others never trigger notifications/);
+  assert.match(tracker, /task\.source!=="manual"/);
+  assert.match(tracker, /Monitor and notification settings/);
+  assert.match(tracker, /Heartbeat monitor/);
+  assert.match(tracker, /Fetch latest tasks & assignments/);
+  assert.match(tracker, /api\/settings\/monitor/);
+  assert.match(tracker, /__local\/monitor\/run/);
   assert.match(tracker, /<small>Today<\/small>/);
   assert.match(tracker, /statusRows\.map/);
   assert.match(tracker, /href=\{item\.threadUrl\}/);
@@ -53,7 +56,8 @@ test("source defines inbound capture and durable checkpoint storage", async () =
   assert.match(schema, /sqliteTable\("monitor_runs"/);
   assert.match(schema, /archived: integer\("archived"\)/);
   assert.match(heartbeat, /GENERAL CHECKPOINT RULE/);
-  assert.match(heartbeat, /FAST-LANE REVIEW QUEUE/);
+  assert.match(heartbeat, /PAUSE GATE/);
+  assert.match(heartbeat, /LOCAL DISCOVERY AND REVIEW QUEUE/);
   assert.match(heartbeat, /resolve-monitor-candidate/);
   assert.match(heartbeat, /waiting_on_requester/);
 });
@@ -94,6 +98,8 @@ test("portable launcher exposes the friendly loopback-only hostname", async () =
   assert.match(proxy, /listenHost = "127\.0\.0\.1"/);
   assert.match(proxy, /targetHost = "localhost"/);
   assert.match(proxy, /listenPort = 80/);
+  assert.match(proxy, /__local\/monitor\/control/);
+  assert.match(proxy, /__local\/monitor\/run/);
   assert.doesNotMatch(proxy, /slack:\/\/channel\?team=/);
   assert.doesNotMatch(proxy, /__assignment-ledger\/open-slack/);
   assert.match(configurator, /127\.0\.0\.1 \$\{hostname\}/);
@@ -110,6 +116,10 @@ test("portable fast listener uses authenticated Slack, changed conversations, lo
   assert.match(monitor, /fast-monitor\.lock/);
   assert.match(monitor, /activeIms/);
   assert.match(monitor, /apply-fast-monitor-cycle/);
+  assert.match(monitor, /options\.full/);
+  assert.match(monitor, /get-monitor-control/);
   assert.match(manager, /--watch/);
+  assert.match(manager, /paused: true/);
+  assert.match(cli, /heartbeat_monitor_enabled/);
   assert.match(cli, /resolve-monitor-candidate/);
 });

@@ -2,7 +2,7 @@
 import { closeSync, existsSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { processRoots, projectProcesses, stopProcessTree } from "./process-management.mjs";
 
 const projectPath = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -10,6 +10,7 @@ const dataPath = join(projectPath, "data", "assignment-ledger");
 const pidPath = join(dataPath, "fast-monitor-service.json");
 const logPath = join(dataPath, "fast-monitor.log");
 const monitorPath = join(projectPath, "scripts", "slack-fast-monitor.mjs");
+const ledgerCli = join(projectPath, "scripts", "ledger-cli.mjs");
 const trackerConfig = JSON.parse(readFileSync(join(projectPath, "config", "tracker.json"), "utf8"));
 const cadenceMinutes = Math.max(1, Number(trackerConfig.monitor?.fastCadenceMinutes) || 5);
 
@@ -26,6 +27,13 @@ function state() {
 
 const command = process.argv[2] || "status";
 if (command === "start") {
+  const control = spawnSync(process.execPath, [ledgerCli, "get-monitor-control"], { cwd: projectPath, encoding: "utf8", windowsHide: true });
+  if (control.status !== 0) { console.error(control.stderr || control.stdout || "Could not read monitor control state."); process.exit(1); }
+  if (JSON.parse(control.stdout).enabled === false) {
+    for (const root of processRoots(managed())) stopProcessTree(root.pid);
+    rmSync(pidPath, { force: true });
+    console.log(JSON.stringify({ running: false, paused: true, cadenceMinutes, logPath })); process.exit(0);
+  }
   const existing = state();
   if (existing) {
     for (const root of processRoots(managed())) if (root.pid !== Number(existing.pid)) stopProcessTree(root.pid);

@@ -33,7 +33,7 @@ Ask this concise grouped interview. Offer the defaults shown and allow the user 
 
 ### Monitoring preferences
 
-4. Confirm the monitoring cadence and initial history window. Defaults: **five-minute high-confidence capture**, **15-minute comprehensive reconciliation**, and **one day of backfill**. Explain that the fast listener is local and dashboard-independent while the heartbeat handles ambiguous context and deep progress review.
+4. Confirm the monitoring cadence and initial history window. Defaults: **five-minute high-confidence local capture**, **15-minute Codex semantic reconciliation**, and **one day of backfill**. Explain that routine discovery and durable cursors are local, while the heartbeat reviews ambiguous context and deep progress evidence without repeating broad workspace scans.
 5. Should desktop notifications be enabled when the listener captures a new request directed to you? Default: **Yes**. This preference can be changed later from the dashboard settings gear and applies even when the dashboard is closed.
 
 Do not ask which operating system they use unless automatic detection is inconclusive.
@@ -105,7 +105,8 @@ Read `automation/HEARTBEAT_PROMPT_TEMPLATE.md`, replace every placeholder with c
 - Never advance a cursor after a partial or failed scan.
 - Resolve relative due dates from each Slack message's timestamp in the configured manager timezone and store date-only values as local `YYYY-MM-DD` dates.
 - Keep notifications limited to errors requiring user action unless the user requests otherwise.
-- Process the fast listener's pending semantic-review queue before the overlap searches, and resolve each successfully reviewed candidate as `captured` or `ignored` with `node scripts/ledger-cli.mjs resolve-monitor-candidate`.
+- Put the `get-monitor-control` pause gate first so paused runs exit before any Slack or database-review work.
+- Process the local listener's pending semantic-review queue instead of repeating broad workspace searches and full DM enumeration, and resolve each successfully reviewed candidate as `captured` or `ignored` with `node scripts/ledger-cli.mjs resolve-monitor-candidate`.
 
 ## 7. Launch and hand off
 
@@ -125,6 +126,8 @@ Explain that:
 
 - the heartbeat needs Codex and an authenticated Slack connection;
 - the local fast listener uses the same authenticated Slack connector, captures only high-confidence items, and leaves ambiguous items for the heartbeat;
+- the settings slider persists pause/resume state in local D1, stops or starts the hidden listener, and gates the heartbeat before it accesses Slack;
+- while paused, the manual button runs a single-instance full 15-minute discovery window; high-confidence captures appear immediately and ambiguous context waits for Codex review when monitoring resumes;
 - the dashboard itself may be stopped without losing listener writes;
 - the dashboard and listener use the same local database;
 - archived records remain recoverable through the Archived filter;

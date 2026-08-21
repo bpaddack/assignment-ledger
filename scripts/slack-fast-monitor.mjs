@@ -26,7 +26,7 @@ const greetingPattern = /^\s*(hi|hello|hey|good (morning|afternoon|evening)|how 
 
 function parseArgs(values) {
   const args = new Set(values);
-  return { watch: args.has("--watch"), dryRun: args.has("--dry-run"), probe: args.has("--probe"), verbose: args.has("--verbose") };
+  return { watch: args.has("--watch"), full: args.has("--full"), dryRun: args.has("--dry-run"), probe: args.has("--probe"), verbose: args.has("--verbose") };
 }
 
 function slackTs(date = new Date()) { return (date.getTime() / 1000).toFixed(6); }
@@ -136,6 +136,10 @@ async function profileName(client, userId, cache) {
 }
 
 async function runCycle(options) {
+  if (!options.probe && !options.full) {
+    const control = JSON.parse(ledgerCommand(["get-monitor-control"]));
+    if (!control.enabled) return { monitorId, skipped: true, reason: "paused", startedAt: new Date().toISOString(), durationMs: 0 };
+  }
   if (!options.probe) acquireLock();
   const startedAt = new Date().toISOString(); const ceilingTs = slackTs();
   let client;
@@ -148,9 +152,9 @@ async function runCycle(options) {
 
     const state = JSON.parse(ledgerCommand(["get-fast-monitor-state", "--monitor-id", monitorId]));
     const knownAssignments = new Set(state.assignmentKeys || []), knownMyTasks = new Set(state.myTaskKeys || []), knownCandidates = new Set(state.candidateKeys || []);
-    const initialOldest = minusSeconds(ceilingTs, Math.max(overlapSeconds, 15 * 60));
+    const initialOldest = minusSeconds(ceilingTs, options.full ? 15 * 60 : Math.max(overlapSeconds, 15 * 60));
     const cursorOldest = (key) => minusSeconds(state.cursors?.[key] || initialOldest, overlapSeconds);
-    const afterDate = new Date(Number(cursorOldest("search:outbound")) * 1000).toISOString().slice(0, 10);
+    const afterDate = new Date(Number(options.full ? initialOldest : cursorOldest("search:outbound")) * 1000).toISOString().slice(0, 10);
     const [ims, outboundSearch, inboundMentionSearch, inboundNameSearch] = await Promise.all([
       listAllIms(client),
       searchAll(client, `from:@${manager.slackHandle} after:${afterDate}`),
@@ -159,9 +163,9 @@ async function runCycle(options) {
     ]);
 
     const imOldest = cursorOldest("ims:updated");
-    const activeIms = ims.filter((im) => !im.updated || Number(im.updated) / 1000 >= Number(imOldest));
+    const activeIms = options.full ? ims : ims.filter((im) => !im.updated || Number(im.updated) / 1000 >= Number(imOldest));
     const dmMessages = await mapLimit(activeIms, 16, async (im) => {
-      const oldest = cursorOldest(`dm:${im.id}`);
+      const oldest = options.full ? initialOldest : cursorOldest(`dm:${im.id}`);
       const result = await client.call("slack_conversation_history", { workspace, channel: im.id, oldest, latest: ceilingTs, inclusive: false, limit: 200, slim: true });
       return { im, messages: result.messages || [] };
     });
@@ -178,11 +182,11 @@ async function runCycle(options) {
 
     const profileCache = new Map(config.assignees.map((person) => [person.slackUserId, person.name])); profileCache.set(manager.slackUserId, manager.name);
     for (const message of seenMessages.values()) {
-      if (!message.text || !message.ts || Number(message.ts) > Number(ceilingTs) || greetingPattern.test(message.text)) continue;
+      const lowerBound = options.full ? Number(initialOldest) : Math.min(Number(cursorOldest("search:outbound")), Number(cursorOldest("search:inbound")));
+      if (!message.text || !message.ts || Number(message.ts) < lowerBound || Number(message.ts) > Number(ceilingTs) || greetingPattern.test(message.text)) continue;
       const link = permalink(message.channelId, message.threadTs || message.ts);
       const strong = actionPattern.test(message.text) || (message.text.includes("?") && !/^\s*(thanks?|thank you)\b/i.test(message.text));
       const medium = strong || weakActionPattern.test(message.text);
-      if (!medium) continue;
       if (message.userId === manager.slackUserId) {
         const targets = new Set(mentionedAssignees(message.rawText));
         if (message.dmUserId && assigneeById.has(message.dmUserId)) targets.add(message.dmUserId);
@@ -192,7 +196,7 @@ async function runCycle(options) {
           if (knownAssignments.has(dedupeKey)) continue;
           const person = assigneeById.get(targetId);
           if (strong) assignments.push({ assignee: person.name, assignment: concise(message.text), threadUrl: link, assignedAt: tsToIso(message.ts), dueDate: dueDateFromText(message.text, message.ts), dedupeKey });
-          else if (!knownCandidates.has(dedupeKey)) candidates.push({ dedupeKey, ledger: "delegated", channelId: message.channelId, messageTs: message.ts, authorId: message.userId, targetId, text: concise(message.text), threadUrl: link, reason: "Direct report addressed; requires semantic confirmation." });
+          else if (!knownCandidates.has(dedupeKey)) candidates.push({ dedupeKey, ledger: "delegated", channelId: message.channelId, messageTs: message.ts, authorId: message.userId, targetId, text: concise(message.text), threadUrl: link, reason: medium ? "Direct report addressed; requires semantic confirmation." : "Direct report addressed without an explicit action phrase; requires contextual review." });
         }
       } else if (message.userId) {
         const directlyAddressed = Boolean(message.dmUserId) || managerAddressed(message.rawText);
@@ -200,7 +204,7 @@ async function runCycle(options) {
         const dedupeKey = `slack-inbound-${message.channelId}-${message.ts}`;
         if (knownMyTasks.has(dedupeKey)) continue;
         if (strong) myTasks.push({ requester: await profileName(client, message.userId, profileCache), requestType: requestType(message.text), task: concise(message.text), threadUrl: link, askedAt: tsToIso(message.ts), dueDate: dueDateFromText(message.text, message.ts), dedupeKey });
-        else if (!knownCandidates.has(dedupeKey)) candidates.push({ dedupeKey, ledger: "inbound", channelId: message.channelId, messageTs: message.ts, authorId: message.userId, targetId: manager.slackUserId, text: concise(message.text), threadUrl: link, reason: "Manager addressed; requires semantic confirmation." });
+        else if (!knownCandidates.has(dedupeKey)) candidates.push({ dedupeKey, ledger: "inbound", channelId: message.channelId, messageTs: message.ts, authorId: message.userId, targetId: manager.slackUserId, text: concise(message.text), threadUrl: link, reason: medium ? "Manager addressed; requires semantic confirmation." : "Manager addressed without an explicit action phrase; requires contextual review." });
       }
     }
 

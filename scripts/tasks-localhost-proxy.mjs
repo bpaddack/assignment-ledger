@@ -1,15 +1,60 @@
 #!/usr/bin/env node
 import http from "node:http";
 import net from "node:net";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawn, spawnSync } from "node:child_process";
+import { processIsLive } from "./process-management.mjs";
 
 const listenHost = "127.0.0.1";
 const listenPort = 80;
 const targetHost = "localhost";
 const targetPort = 3000;
+const projectPath = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const manualStatePath = join(projectPath, "data", "assignment-ledger", "manual-monitor-run.json");
+const manualRunnerPath = join(projectPath, "scripts", "manual-monitor-runner.mjs");
+const monitorManagerPath = join(projectPath, "scripts", "manage-fast-monitor.mjs");
+let manualChildPid = null;
+
+function json(response, status, value) {
+  response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", "x-assignment-ledger-proxy": "1" });
+  response.end(JSON.stringify(value));
+}
+function manualState() {
+  if (manualChildPid && processIsLive(manualChildPid)) return { running: true, pid: manualChildPid };
+  if (!existsSync(manualStatePath)) return { running: false };
+  try {
+    const value = JSON.parse(readFileSync(manualStatePath, "utf8"));
+    if (value.running && !processIsLive(value.pid)) return { ...value, running: false, outcome: "error", error: "The manual fetch process exited unexpectedly." };
+    return value;
+  } catch { return { running: false, outcome: "error", error: "Could not read manual fetch state." }; }
+}
 export function createFriendlyProxy() {
   const server = http.createServer((request, response) => {
+    if (request.url === "/__local/monitor/status" && request.method === "GET") return json(response, 200, manualState());
+    if (request.url === "/__local/monitor/run" && request.method === "POST") {
+      const existing = manualState();
+      if (existing.running) return json(response, 409, { error: "A full fetch is already running.", ...existing });
+      const child = spawn(process.execPath, [manualRunnerPath], { cwd: projectPath, detached: true, windowsHide: true, stdio: "ignore" });
+      manualChildPid = child.pid;
+      child.unref();
+      return json(response, 202, { running: true, pid: child.pid, startedAt: new Date().toISOString() });
+    }
+    if (request.url === "/__local/monitor/control" && request.method === "POST") {
+      let body = "";
+      request.on("data", (chunk) => { body += chunk; });
+      request.on("end", () => {
+        try {
+          const { enabled } = JSON.parse(body || "{}");
+          if (typeof enabled !== "boolean") return json(response, 400, { error: "enabled must be a boolean" });
+          const result = spawnSync(process.execPath, [monitorManagerPath, enabled ? "start" : "stop"], { cwd: projectPath, encoding: "utf8", windowsHide: true });
+          if (result.status !== 0) return json(response, 500, { error: (result.stderr || result.stdout || "Could not update listener process.").trim() });
+          return json(response, 200, { enabled, listener: JSON.parse(result.stdout.trim()) });
+        } catch (error) { return json(response, 400, { error: error instanceof Error ? error.message : "Invalid request" }); }
+      });
+      return;
+    }
     const upstream = http.request({
       hostname: targetHost,
       port: targetPort,

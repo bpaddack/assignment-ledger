@@ -6,8 +6,14 @@ The project follows semantic versioning for tagged releases.
 
 ## Unreleased
 
+### Added
+
+- Persisted heartbeat-monitor pause/resume slider and manual full 15-minute fetch button.
+- Single-instance hidden manual-fetch process management and a first-step pause gate for scheduled Codex runs.
+
 ### Changed
 
+- Moved routine Slack discovery to the lightweight local listener and made Codex reconciliation queue-first to reduce UI latency and token use.
 - Changed the dashboard-independent fast Slack listener cadence from two minutes to five minutes.
 - Improved hidden process lifecycle management so app restarts clean up stale project-owned dashboard, proxy, and listener processes.
 - Added developer and author attribution for Brent Paddack to the installation documentation and package metadata.

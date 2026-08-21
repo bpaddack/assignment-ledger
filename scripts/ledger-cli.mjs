@@ -66,6 +66,34 @@ function desktopNotificationsEnabled() {
   return row?.setting_value !== "false";
 }
 
+function monitorEnabled() {
+  executeFile(settingsSchema);
+  const row = query("SELECT setting_value FROM app_settings WHERE setting_key='heartbeat_monitor_enabled'")[0];
+  return row?.setting_value !== "false";
+}
+
+function getMonitorControl() {
+  executeFile(`${settingsSchema}\n${fastMonitorSchema}`);
+  const lastRun = query("SELECT started_at,finished_at,outcome,captured_count,candidate_count FROM monitor_runs WHERE monitor_id='slack_fast_lane' ORDER BY finished_at DESC LIMIT 1")[0];
+  console.log(JSON.stringify({
+    enabled: monitorEnabled(),
+    lastRun: lastRun ? {
+      startedAt: lastRun.started_at,
+      finishedAt: lastRun.finished_at,
+      outcome: lastRun.outcome,
+      capturedCount: Number(lastRun.captured_count) || 0,
+      candidateCount: Number(lastRun.candidate_count) || 0,
+    } : null,
+  }));
+}
+
+function setMonitorControl(args) {
+  required(args, ["enabled"]);
+  if (!["true", "false"].includes(args.enabled)) throw new Error("enabled must be true or false.");
+  executeFile(`${settingsSchema}\nINSERT INTO app_settings (setting_key,setting_value,updated_at) VALUES ('heartbeat_monitor_enabled',${sqlText(args.enabled)},${sqlText(new Date().toISOString())}) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at;`);
+  console.log(JSON.stringify({ enabled: args.enabled === "true" }));
+}
+
 function showDesktopNotification(requester, task) {
   const title = `New task from ${requester}`;
   const body = task.length > 220 ? `${task.slice(0, 217)}…` : task;
@@ -187,6 +215,8 @@ try {
   else if (command === "get-checkpoint") getCheckpoint(args);
   else if (command === "update-checkpoint") updateCheckpoint(args);
   else if (command === "get-fast-monitor-state") getFastMonitorState(args);
+  else if (command === "get-monitor-control") getMonitorControl();
+  else if (command === "set-monitor-control") setMonitorControl(args);
   else if (command === "apply-fast-monitor-cycle") applyFastMonitorCycle(args);
   else if (command === "list-pending-candidates") listPendingCandidates(args);
   else if (command === "resolve-monitor-candidate") resolveMonitorCandidate(args);

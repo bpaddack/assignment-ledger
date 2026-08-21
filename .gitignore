@@ -44,9 +44,8 @@ yarn-error.log*
 /outputs/
 /work/
 
-# Local Codex/Sites analysis and hosting metadata
+# Local Codex analysis artifacts
 /.codex-mrr-analysis/
-/.openai/
 
 # Per-installation identity and legacy inbox state
 /config/tracker.json

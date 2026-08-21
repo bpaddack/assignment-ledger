@@ -11,7 +11,7 @@ It includes the original dashboard design and behavior, durable local D1/SQLite 
 
 Source controls open the original Slack HTTPS permalink directly; the user's browser and Slack preferences decide whether that link stays in the browser or opens in Slack. Completed summary totals cover the current local calendar day and reset at midnight. Requester filters are scoped to the records present in the selected status view.
 
-The settings gear controls **Desktop notifications** for the local installation. Notifications are on by default, use Windows Notification Center or macOS Notification Center, work even when the dashboard is closed, appear only for newly auto-captured items in **My Tasks and Assignments**, and never appear for work delegated to other people or records added manually. The setting is stored in the local ledger so the background listener and dashboard share the same preference. The in-page popup remains available when the dashboard is open.
+The settings gear controls the **Heartbeat monitor** and **Desktop notifications** for the local installation. Pausing the monitor stops the local listener and makes scheduled Codex runs exit after a cheap local gate check. While paused, the manual-fetch button runs one complete 15-minute discovery window without re-enabling recurring monitoring. Notifications are on by default, use Windows Notification Center or macOS Notification Center, work even when the dashboard is closed, appear only for newly auto-captured items in **My Tasks and Assignments**, and never appear for work delegated to other people or records added manually. These settings are stored in the local ledger so the listener, Codex heartbeat, and dashboard share the same state.
 
 ## Start here
 
@@ -35,7 +35,7 @@ An authenticated Slack connector in Codex/Ghost is required for monitoring. The 
 
 ## Local privacy
 
-All captured task records, context, completion state, archive state, monitor checkpoints, fast-listener cursors/review queue, and desktop-notification preference are stored under `data/assignment-ledger` inside the extracted project. The in-page popup watermark is stored in that browser's local storage. The data directory is created locally and was not included in this ZIP.
+All captured task records, context, completion state, archive state, monitor checkpoints, fast-listener cursors/review queue, monitor pause state, and desktop-notification preference are stored under `data/assignment-ledger` inside the extracted project. The in-page popup watermark is stored in that browser's local storage. The data directory is created locally and was not included in this ZIP.
 
 Do not redistribute the configured project without first excluding `data`, `node_modules`, build folders, logs, and personalized `config/tracker.json` if identities should remain private.
 
