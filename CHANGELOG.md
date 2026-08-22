@@ -1,5 +1,8 @@
 # Changelog
 
+- Extended the fast listener to scan authenticated Webex direct and group spaces alongside Slack, using confirmed Webex person IDs, independent room cursors, overlap, and cross-platform deduplication.
+- Added small Slack and Webex source icons immediately after each entry timestamp; existing automated records remain identified as Slack.
+
 All notable user-facing changes to Assignment Ledger are recorded here.
 
 The project follows semantic versioning for tagged releases.

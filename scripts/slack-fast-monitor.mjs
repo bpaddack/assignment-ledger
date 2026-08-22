@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import { connectSlackMcp } from "./slack-mcp-client.mjs";
+import { connectWebexMcp } from "./webex-mcp-client.mjs";
 
 const projectPath = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const config = JSON.parse(readFileSync(join(projectPath, "config", "tracker.json"), "utf8"));
@@ -14,7 +15,9 @@ const lockPath = join(dataPath, "fast-monitor.lock");
 const monitorId = "slack_fast_lane";
 const workspace = config.workspace.host;
 const manager = config.manager;
+const webexAccount = config.webex?.account || "ghost-webex";
 const assigneeById = new Map(config.assignees.map((person) => [person.slackUserId, person]));
+const assigneeByWebexId = new Map(config.assignees.map((person) => [person.webexPersonId, person]).filter(([id]) => id));
 const cadenceMs = Math.max(1, Number(config.monitor.fastCadenceMinutes) || 5) * 60_000;
 function configuredWindowSeconds(value, fallbackMinutes, minimumMinutes = 1) {
   return Math.max(minimumMinutes, Number(value) || fallbackMinutes) * 60;
@@ -31,13 +34,27 @@ const greetingPattern = /^\s*(hi|hello|hey|good (morning|afternoon|evening)|how 
 
 function parseArgs(values) {
   const args = new Set(values);
-  return { watch: args.has("--watch"), full: args.has("--full"), dryRun: args.has("--dry-run"), probe: args.has("--probe"), verbose: args.has("--verbose") };
+  const sinceIndex = values.indexOf("--since-ts");
+  const sinceTs = sinceIndex >= 0 ? String(values[sinceIndex + 1] || "") : "";
+  if (sinceTs && !/^\d{10}(?:\.\d{1,6})?$/.test(sinceTs)) throw new Error("--since-ts must be a Slack timestamp such as 1787338792.042789.");
+  return { watch: args.has("--watch"), full: args.has("--full"), dryRun: args.has("--dry-run"), probe: args.has("--probe"), verbose: args.has("--verbose"), sinceTs };
 }
 
 function slackTs(date = new Date()) { return (date.getTime() / 1000).toFixed(6); }
 function tsToIso(ts) { return new Date(Number(ts) * 1000).toISOString(); }
 function minusSeconds(ts, seconds) { return (Math.max(0, Number(ts) - seconds)).toFixed(6); }
 function permalink(channel, ts) { return `https://${workspace}/archives/${channel}/p${String(ts).replace(".", "")}`; }
+function webexGuid(id) {
+  const value = String(id || "");
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return value;
+  try {
+    const decoded = Buffer.from(value.replaceAll("-", "+").replaceAll("_", "/"), "base64").toString("utf8");
+    const guid = decoded.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)?.[0];
+    if (guid) return guid;
+  } catch { /* fall through to the validation error below */ }
+  throw new Error(`Invalid Webex identifier: ${value}`);
+}
+function webexMessageLink(roomId, messageId) { return `webexteams://im?space=${webexGuid(roomId)}&message=${webexGuid(messageId)}`; }
 function normalizeText(value) { return String(value || "").replace(/<@([A-Z0-9]+)>/g, (_, id) => assigneeById.get(id)?.name || (id === manager.slackUserId ? manager.name : `@${id}`)).replace(/\s+/g, " ").trim(); }
 function semanticText(value) { return String(value || "").replace(/<https?:\/\/[^>|]+(?:\|([^>]+))?>/gi, "$1").replace(/https?:\/\/\S+/gi, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim(); }
 function concise(value) { const text = normalizeText(value); return text.length > 360 ? `${text.slice(0, 357)}…` : text; }
@@ -71,7 +88,38 @@ function automatedJiraNotification(message) {
   return message.appId === "A2RPP3NFR" || message.botId === "B9PUPSKC5" || /\b(?:Automation for Jira|Jira Cloud)\b/i.test(message.text);
 }
 
-export { automatedJiraNotification, configuredWindowSeconds, dueDateFromText, managerAddressed, requestType, semanticText };
+export { automatedJiraNotification, configuredWindowSeconds, dueDateFromText, latestCapturedSlackTs, managerAddressed, requestType, semanticText, webexGuid, webexMessageLink };
+
+function webexMessageShape(message, room, dmTargetId = null) {
+  const created = String(message.created || "");
+  return {
+    id: String(message.id || ""),
+    roomId: String(message.roomId || room.id || ""),
+    roomType: message.roomType || room.type,
+    roomTitle: room.title || "Webex space",
+    personId: String(message.personId || ""),
+    personEmail: String(message.personEmail || ""),
+    text: normalizeText(message.text || ""),
+    rawText: String(message.html || message.text || ""),
+    created,
+    ts: created ? String(Date.parse(created) / 1000) : "",
+    dmTargetId,
+  };
+}
+
+function webexMentionedAssignees(rawText) {
+  const ids = new Set();
+  for (const [id, person] of assigneeByWebexId) {
+    if (rawText.includes(id) || rawText.toLowerCase().includes(person.webexEmail.toLowerCase()) || new RegExp(`\\b${person.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(rawText)) ids.add(id);
+  }
+  return [...ids];
+}
+
+function webexManagerAddressed(rawText) {
+  return rawText.includes(manager.webexPersonId)
+    || rawText.toLowerCase().includes(manager.webexEmail.toLowerCase())
+    || new RegExp(`\\b${manager.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b|(?:^|[,:]\\s*)${manager.name.split(" ")[0]}(?:[,:]|\\s)`, "i").test(rawText);
+}
 
 function messageShape(message, fallbackChannel) {
   const channelId = message.channel_id || message.channel?.id || fallbackChannel;
@@ -130,6 +178,25 @@ async function listAllIms(client) {
   return ims.filter((im) => !im.is_deleted && im.id);
 }
 
+async function conversationHistoryAll(client, channel, oldest, latest) {
+  const messages = []; let cursor = null;
+  do {
+    const page = await client.call("slack_conversation_history", { workspace, channel, oldest, latest, inclusive: true, limit: 200, slim: true, ...(cursor ? { cursor } : {}) });
+    messages.push(...(page.messages || []));
+    cursor = page.next_cursor || page.response_metadata?.next_cursor || null;
+  } while (cursor);
+  return messages;
+}
+
+function latestCapturedSlackTs(state) {
+  const timestamps = [...(state.assignmentKeys || []), ...(state.myTaskKeys || [])]
+    .map((key) => String(key).match(/-(\d{10}(?:\.\d{1,6})?)(?:-[A-Z0-9]+)?$/)?.[1])
+    .filter(Boolean)
+    .map(Number)
+    .filter(Number.isFinite);
+  return timestamps.length ? Math.max(...timestamps).toFixed(6) : "";
+}
+
 async function searchAll(client, query) {
   const first = await client.call("slack_search", { workspace, query, count: 100, page: 1, highlight: false });
   const pages = Number(first.page_count) || 1;
@@ -148,6 +215,72 @@ async function profileName(client, userId, cache) {
   } catch { cache.set(userId, userId); return userId; }
 }
 
+async function webexProfileName(client, personId, personEmail, cache) {
+  if (!personId) return personEmail || "Unknown requester";
+  if (cache.has(personId)) return cache.get(personId);
+  try {
+    const result = await client.call("webex_person_profile", { account: webexAccount, person_id: personId });
+    const person = result.person || result.profile || result;
+    const name = person.displayName || person.nickName || person.emails?.[0] || personEmail || personId;
+    cache.set(personId, name); return name;
+  } catch { cache.set(personId, personEmail || personId); return personEmail || personId; }
+}
+
+async function scanWebex(client, { options, state, initialOldest, ceilingTs, knownAssignments, knownMyTasks, knownCandidates }) {
+  const assignments = [], myTasks = [], candidates = [], cursors = {};
+  const ceilingIso = new Date(Number(ceilingTs) * 1000).toISOString();
+  const cursorOldest = (key, windowSeconds = overlapSeconds) => minusSeconds(state.cursors?.[key] || initialOldest, windowSeconds);
+  const roomsOldest = options.full ? initialOldest : cursorOldest("webex:rooms", searchOverlapSeconds);
+  const roomsResult = await client.call("webex_rooms", { account: webexAccount, max: 100, limit: 1000 });
+  const rooms = (roomsResult.rooms || []).filter((room) => !room.lastActivity || Date.parse(room.lastActivity) / 1000 >= Number(roomsOldest));
+  const roomMessages = await mapLimit(rooms, 8, async (room) => {
+    const roomCursorKey = `webex:room:${room.id}`;
+    const oldest = options.full ? initialOldest : state.cursors?.[roomCursorKey] ? cursorOldest(roomCursorKey) : roomsOldest;
+    const [messagesResult, membersResult] = await Promise.all([
+      client.call("webex_messages", { account: webexAccount, room: room.id, after: new Date(Number(oldest) * 1000).toISOString(), before: ceilingIso, max: 1000 }),
+      room.type === "direct" ? client.call("webex_room_members", { account: webexAccount, room: room.id, max: 10 }) : Promise.resolve({ memberships: [] }),
+    ]);
+    const dmTargetId = room.type === "direct"
+      ? membersResult.memberships?.find((membership) => membership.personId !== manager.webexPersonId)?.personId || null
+      : null;
+    cursors[roomCursorKey] = ceilingTs;
+    return (messagesResult.messages || []).map((message) => webexMessageShape(message, room, dmTargetId));
+  });
+  cursors["webex:rooms"] = ceilingTs;
+
+  const profileCache = new Map(config.assignees.map((person) => [person.webexPersonId, person.name]).filter(([id]) => id));
+  profileCache.set(manager.webexPersonId, manager.name);
+  const messages = roomMessages.flat();
+  for (const message of messages) {
+    const lowerBound = options.full ? Number(initialOldest) : Number(cursorOldest(`webex:room:${message.roomId}`));
+    if (!message.id || !message.text || !message.ts || Number(message.ts) < lowerBound || Number(message.ts) > Number(ceilingTs) || greetingPattern.test(message.text)) continue;
+    const link = webexMessageLink(message.roomId, message.id);
+    const actionableText = semanticText(message.text);
+    const strong = actionPattern.test(actionableText) || (actionableText.includes("?") && !/^\s*(thanks?|thank you)\b/i.test(actionableText));
+    const medium = strong || weakActionPattern.test(actionableText);
+    if (message.personId === manager.webexPersonId) {
+      const targets = new Set(webexMentionedAssignees(message.rawText));
+      if (message.dmTargetId && assigneeByWebexId.has(message.dmTargetId)) targets.add(message.dmTargetId);
+      for (const targetId of targets) {
+        const suffix = targets.size > 1 ? `-${targetId}` : "";
+        const dedupeKey = `webex-${message.id}${suffix}`;
+        if (knownAssignments.has(dedupeKey)) continue;
+        const person = assigneeByWebexId.get(targetId);
+        if (strong) assignments.push({ source: "webex", assignee: person.name, assignment: concise(message.text), threadUrl: link, assignedAt: message.created, dueDate: dueDateFromText(message.text, message.ts), dedupeKey });
+        else if (!knownCandidates.has(dedupeKey)) candidates.push({ dedupeKey, ledger: "delegated", channelId: message.roomId, messageTs: message.created, authorId: message.personId, targetId, text: concise(message.text), threadUrl: link, reason: medium ? "Webex direct report addressed; requires semantic confirmation." : "Webex direct report addressed without an explicit action phrase; requires contextual review." });
+      }
+    } else if (message.personId) {
+      const directlyAddressed = message.roomType === "direct" || webexManagerAddressed(message.rawText);
+      if (!directlyAddressed) continue;
+      const dedupeKey = `webex-inbound-${message.id}`;
+      if (knownMyTasks.has(dedupeKey)) continue;
+      if (strong) myTasks.push({ source: "webex", requester: await webexProfileName(client, message.personId, message.personEmail, profileCache), requestType: requestType(actionableText), task: concise(message.text), threadUrl: link, askedAt: message.created, dueDate: dueDateFromText(message.text, message.ts), dedupeKey });
+      else if (!knownCandidates.has(dedupeKey)) candidates.push({ dedupeKey, ledger: "inbound", channelId: message.roomId, messageTs: message.created, authorId: message.personId, targetId: manager.webexPersonId, text: concise(message.text), threadUrl: link, reason: medium ? "Manager addressed in Webex; requires semantic confirmation." : "Manager addressed in Webex without an explicit action phrase; requires contextual review." });
+    }
+  }
+  return { roomsChecked: rooms.length, messagesChecked: messages.length, assignments, myTasks, candidates, cursors };
+}
+
 async function runCycle(options) {
   if (!options.probe && !options.full) {
     const control = JSON.parse(ledgerCommand(["get-monitor-control"]));
@@ -155,17 +288,31 @@ async function runCycle(options) {
   }
   if (!options.probe) acquireLock();
   const startedAt = new Date().toISOString(); const ceilingTs = slackTs();
-  let client;
+  let client, webexClient;
   try {
     client = await connectSlackMcp();
     const current = await client.call("slack_current_user", { workspace });
     const currentId = current.user_id || current.user?.id || current.id;
     if (currentId && currentId !== manager.slackUserId) throw new Error(`Slack is authenticated as ${currentId}, not configured manager ${manager.slackUserId}.`);
-    if (options.probe) return { probe: "ok", workspace, userId: currentId || manager.slackUserId };
+    try {
+      webexClient = await connectWebexMcp();
+      const accounts = await webexClient.call("webex_accounts");
+      const webexPersonId = accounts.account_profile?.id;
+      if (webexPersonId && webexPersonId !== manager.webexPersonId) throw new Error(`Webex is authenticated as ${webexPersonId}, not configured manager ${manager.webexPersonId}.`);
+    } catch (error) {
+      if (options.probe) throw error;
+      console.error(`Webex scan unavailable: ${error instanceof Error ? error.message : error}`);
+      await webexClient?.close().catch(() => {}); webexClient = null;
+    }
+    if (options.probe) return { probe: "ok", workspace, slackUserId: currentId || manager.slackUserId, webexAccount, webexPersonId: manager.webexPersonId };
 
     const state = JSON.parse(ledgerCommand(["get-fast-monitor-state", "--monitor-id", monitorId]));
     const knownAssignments = new Set(state.assignmentKeys || []), knownMyTasks = new Set(state.myTaskKeys || []), knownCandidates = new Set(state.candidateKeys || []);
-    const initialOldest = minusSeconds(ceilingTs, options.full ? 15 * 60 : Math.max(overlapSeconds, 15 * 60));
+    const lastCapturedTs = latestCapturedSlackTs(state);
+    const recoveryAnchor = options.sinceTs || lastCapturedTs;
+    const initialOldest = options.full && recoveryAnchor
+      ? minusSeconds(recoveryAnchor, overlapSeconds)
+      : minusSeconds(ceilingTs, Math.max(overlapSeconds, 15 * 60));
     const cursorOldest = (key, windowSeconds = overlapSeconds) => minusSeconds(state.cursors?.[key] || initialOldest, windowSeconds);
     const afterDate = new Date(Number(options.full ? initialOldest : cursorOldest("search:outbound", searchOverlapSeconds)) * 1000).toISOString().slice(0, 10);
     const [ims, outboundSearch, inboundMentionSearch, inboundNameSearch] = await Promise.all([
@@ -179,8 +326,8 @@ async function runCycle(options) {
     const activeIms = options.full ? ims : ims.filter((im) => !im.updated || Number(im.updated) / 1000 >= Number(imOldest));
     const dmMessages = await mapLimit(activeIms, 16, async (im) => {
       const oldest = options.full ? initialOldest : cursorOldest(`dm:${im.id}`);
-      const result = await client.call("slack_conversation_history", { workspace, channel: im.id, oldest, latest: ceilingTs, inclusive: false, limit: 200, slim: true });
-      return { im, messages: result.messages || [] };
+      const messages = await conversationHistoryAll(client, im.id, oldest, ceilingTs);
+      return { im, messages };
     });
 
     const assignments = [], myTasks = [], candidates = [], cursors = { "search:outbound": ceilingTs, "search:inbound": ceilingTs, "ims:updated": ceilingTs };
@@ -209,7 +356,7 @@ async function runCycle(options) {
           const dedupeKey = `slack-${message.channelId}-${message.ts}${suffix}`;
           if (knownAssignments.has(dedupeKey)) continue;
           const person = assigneeById.get(targetId);
-          if (strong) assignments.push({ assignee: person.name, assignment: concise(message.text), threadUrl: link, assignedAt: tsToIso(message.ts), dueDate: dueDateFromText(message.text, message.ts), dedupeKey });
+          if (strong) assignments.push({ source: "slack", assignee: person.name, assignment: concise(message.text), threadUrl: link, assignedAt: tsToIso(message.ts), dueDate: dueDateFromText(message.text, message.ts), dedupeKey });
           else if (!knownCandidates.has(dedupeKey)) candidates.push({ dedupeKey, ledger: "delegated", channelId: message.channelId, messageTs: message.ts, authorId: message.userId, targetId, text: concise(message.text), threadUrl: link, reason: medium ? "Direct report addressed; requires semantic confirmation." : "Direct report addressed without an explicit action phrase; requires contextual review." });
         }
       } else if (message.userId) {
@@ -217,19 +364,25 @@ async function runCycle(options) {
         if (!directlyAddressed) continue;
         const dedupeKey = `slack-inbound-${message.channelId}-${message.ts}`;
         if (knownMyTasks.has(dedupeKey)) continue;
-        if (strong) myTasks.push({ requester: await profileName(client, message.userId, profileCache), requestType: requestType(actionableText), task: concise(message.text), threadUrl: link, askedAt: tsToIso(message.ts), dueDate: dueDateFromText(message.text, message.ts), dedupeKey });
+        if (strong) myTasks.push({ source: "slack", requester: await profileName(client, message.userId, profileCache), requestType: requestType(actionableText), task: concise(message.text), threadUrl: link, askedAt: tsToIso(message.ts), dueDate: dueDateFromText(message.text, message.ts), dedupeKey });
         else if (!knownCandidates.has(dedupeKey)) candidates.push({ dedupeKey, ledger: "inbound", channelId: message.channelId, messageTs: message.ts, authorId: message.userId, targetId: manager.slackUserId, text: concise(message.text), threadUrl: link, reason: medium ? "Manager addressed; requires semantic confirmation." : "Manager addressed without an explicit action phrase; requires contextual review." });
       }
     }
 
-    const payload = { monitorId, runId: crypto.randomUUID(), startedAt, finishedAt: new Date().toISOString(), ceilingTs, conversationsChecked: activeIms.length + 3, messagesChecked: seenMessages.size, assignments, myTasks, candidates, cursors, outcome: "success" };
+    let webex = { roomsChecked: 0, messagesChecked: 0, assignments: [], myTasks: [], candidates: [], cursors: {} };
+    if (webexClient) {
+      try { webex = await scanWebex(webexClient, { options, state, initialOldest, ceilingTs, knownAssignments, knownMyTasks, knownCandidates }); }
+      catch (error) { console.error(`Webex scan failed without advancing its cursors: ${error instanceof Error ? error.message : error}`); }
+    }
+    assignments.push(...webex.assignments); myTasks.push(...webex.myTasks); candidates.push(...webex.candidates); Object.assign(cursors, webex.cursors);
+    const payload = { monitorId, runId: crypto.randomUUID(), startedAt, finishedAt: new Date().toISOString(), ceilingTs, conversationsChecked: activeIms.length + 3 + webex.roomsChecked, messagesChecked: seenMessages.size + webex.messagesChecked, assignments, myTasks, candidates, cursors, outcome: "success" };
     if (!options.dryRun) {
       const inputPath = join(dataPath, `fast-cycle-${payload.runId}.json`);
       try { writeFileSync(inputPath, JSON.stringify(payload), "utf8"); ledgerCommand(["apply-fast-monitor-cycle", "--input", inputPath]); } finally { rmSync(inputPath, { force: true }); }
     }
-    return { monitorId, runId: payload.runId, startedAt, finishedAt: payload.finishedAt, ceilingTs, conversationsChecked: payload.conversationsChecked, messagesChecked: payload.messagesChecked, assignments: assignments.length, myTasks: myTasks.length, candidates: candidates.length, cursorCount: Object.keys(cursors).length, outcome: payload.outcome, durationMs: Date.now() - Date.parse(startedAt), dryRun: options.dryRun };
+    return { monitorId, runId: payload.runId, startedAt, finishedAt: payload.finishedAt, ceilingTs, recoveryAnchor: options.full ? recoveryAnchor || null : null, scanOldest: initialOldest, conversationsChecked: payload.conversationsChecked, messagesChecked: payload.messagesChecked, assignments: assignments.length, myTasks: myTasks.length, candidates: candidates.length, cursorCount: Object.keys(cursors).length, outcome: payload.outcome, durationMs: Date.now() - Date.parse(startedAt), dryRun: options.dryRun };
   } finally {
-    await client?.close().catch(() => {});
+    await Promise.all([client?.close().catch(() => {}), webexClient?.close().catch(() => {})]);
     if (!options.probe) rmSync(lockPath, { force: true });
   }
 }

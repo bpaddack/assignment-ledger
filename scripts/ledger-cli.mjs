@@ -29,6 +29,11 @@ function required(args, names) {
 
 const sqlText = (value) => `'${String(value).replaceAll("'", "''")}'`;
 const nullable = (value) => value ? sqlText(value) : "NULL";
+function captureSource(value, dedupeKey = "") {
+  if (value === "webex" || String(dedupeKey).startsWith("webex-")) return "webex";
+  if (value === "manual") return "manual";
+  return "slack";
+}
 
 function executeFile(sql) {
   const temporary = mkdtempSync(join(tmpdir(), "assignment-ledger-"));
@@ -94,8 +99,7 @@ function setMonitorControl(args) {
   console.log(JSON.stringify({ enabled: args.enabled === "true" }));
 }
 
-function showDesktopNotification(requester, task) {
-  const title = `New task from ${requester}`;
+function showDesktopNotification(title, task) {
   const body = task.length > 220 ? `${task.slice(0, 217)}…` : task;
   if (process.platform === "win32") {
     const ps = `$title = $env:ASSIGNMENT_LEDGER_NOTIFICATION_TITLE\n$body = $env:ASSIGNMENT_LEDGER_NOTIFICATION_BODY\n[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null\n$template = [Windows.UI.Notifications.ToastTemplateType]::ToastText02\n$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent($template)\n$null = $xml.GetElementsByTagName('text').Item(0).AppendChild($xml.CreateTextNode($title))\n$null = $xml.GetElementsByTagName('text').Item(1).AppendChild($xml.CreateTextNode($body))\n$toast = [Windows.UI.Notifications.ToastNotification]::new($xml)\n[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Slack Assignment Ledger').Show($toast)`;
@@ -111,7 +115,7 @@ function showDesktopNotification(requester, task) {
 function captureAssignment(args) {
   required(args, ["assignee", "assignment", "threadUrl", "assignedAt", "dedupeKey"]);
   if (!config.assignees.some((person) => person.name === args.assignee)) throw new Error("Assignee is not in config/tracker.json.");
-  executeFile(`${assignmentSchema}\nINSERT OR IGNORE INTO assignments (id,assignee,assignment,thread_url,assigned_at,due_date,completed,archived,source,dedupe_key,created_at) VALUES (${sqlText(crypto.randomUUID())},${sqlText(args.assignee)},${sqlText(args.assignment)},${sqlText(args.threadUrl)},${sqlText(args.assignedAt)},${nullable(args.dueDate)},0,0,'monitor',${sqlText(args.dedupeKey)},${sqlText(new Date().toISOString())});`);
+  executeFile(`${assignmentSchema}\nINSERT OR IGNORE INTO assignments (id,assignee,assignment,thread_url,assigned_at,due_date,completed,archived,source,dedupe_key,created_at) VALUES (${sqlText(crypto.randomUUID())},${sqlText(args.assignee)},${sqlText(args.assignment)},${sqlText(args.threadUrl)},${sqlText(args.assignedAt)},${nullable(args.dueDate)},0,0,${sqlText(captureSource(args.source, args.dedupeKey))},${sqlText(args.dedupeKey)},${sqlText(new Date().toISOString())});`);
   console.log(`Captured locally: ${args.assignee} — ${args.assignment}`);
 }
 
@@ -120,9 +124,9 @@ function captureMyTask(args) {
   if (!["task", "question", "input", "approval", "review"].includes(args.requestType)) throw new Error("Invalid request type.");
   executeFile(taskSchema);
   const alreadyCaptured = query(`SELECT 1 AS found FROM my_tasks WHERE dedupe_key=${sqlText(args.dedupeKey)} LIMIT 1`)[0]?.found === 1;
-  executeFile(`${taskSchema}\nINSERT OR IGNORE INTO my_tasks (id,requester,request_type,task,thread_url,asked_at,due_date,completed,archived,source,dedupe_key,created_at) VALUES (${sqlText(crypto.randomUUID())},${sqlText(args.requester)},${sqlText(args.requestType)},${sqlText(args.task)},${sqlText(args.threadUrl)},${sqlText(args.askedAt)},${nullable(args.dueDate)},0,0,'monitor',${sqlText(args.dedupeKey)},${sqlText(new Date().toISOString())});`);
+  executeFile(`${taskSchema}\nINSERT OR IGNORE INTO my_tasks (id,requester,request_type,task,thread_url,asked_at,due_date,completed,archived,source,dedupe_key,created_at) VALUES (${sqlText(crypto.randomUUID())},${sqlText(args.requester)},${sqlText(args.requestType)},${sqlText(args.task)},${sqlText(args.threadUrl)},${sqlText(args.askedAt)},${nullable(args.dueDate)},0,0,${sqlText(captureSource(args.source, args.dedupeKey))},${sqlText(args.dedupeKey)},${sqlText(new Date().toISOString())});`);
   console.log(`Captured locally: ${args.requester} — ${args.task}`);
-  if (!alreadyCaptured && desktopNotificationsEnabled()) showDesktopNotification(args.requester, args.task);
+  if (!alreadyCaptured && desktopNotificationsEnabled()) showDesktopNotification(`New task from ${args.requester}`, args.task);
 }
 
 function updateInsight(args, inbound) {
@@ -171,12 +175,12 @@ function applyFastMonitorCycle(args) {
   for (const item of assignmentsToCapture) {
     required(item, ["assignee", "assignment", "threadUrl", "assignedAt", "dedupeKey"]);
     if (!config.assignees.some((person) => person.name === item.assignee)) throw new Error(`Unconfigured assignee: ${item.assignee}`);
-    sql.push(`INSERT OR IGNORE INTO assignments (id,assignee,assignment,thread_url,assigned_at,due_date,completed,archived,source,dedupe_key,created_at) VALUES (${sqlText(crypto.randomUUID())},${sqlText(item.assignee)},${sqlText(item.assignment)},${sqlText(item.threadUrl)},${sqlText(item.assignedAt)},${nullable(item.dueDate)},0,0,'fast_monitor',${sqlText(item.dedupeKey)},${sqlText(now)});`);
+    sql.push(`INSERT OR IGNORE INTO assignments (id,assignee,assignment,thread_url,assigned_at,due_date,completed,archived,source,dedupe_key,created_at) VALUES (${sqlText(crypto.randomUUID())},${sqlText(item.assignee)},${sqlText(item.assignment)},${sqlText(item.threadUrl)},${sqlText(item.assignedAt)},${nullable(item.dueDate)},0,0,${sqlText(captureSource(item.source, item.dedupeKey))},${sqlText(item.dedupeKey)},${sqlText(now)});`);
   }
   for (const item of myTasksToCapture) {
     required(item, ["requester", "requestType", "task", "threadUrl", "askedAt", "dedupeKey"]);
     if (!["task", "question", "input", "approval", "review"].includes(item.requestType)) throw new Error(`Invalid request type: ${item.requestType}`);
-    sql.push(`INSERT OR IGNORE INTO my_tasks (id,requester,request_type,task,thread_url,asked_at,due_date,completed,archived,source,dedupe_key,created_at) VALUES (${sqlText(crypto.randomUUID())},${sqlText(item.requester)},${sqlText(item.requestType)},${sqlText(item.task)},${sqlText(item.threadUrl)},${sqlText(item.askedAt)},${nullable(item.dueDate)},0,0,'fast_monitor',${sqlText(item.dedupeKey)},${sqlText(now)});`);
+    sql.push(`INSERT OR IGNORE INTO my_tasks (id,requester,request_type,task,thread_url,asked_at,due_date,completed,archived,source,dedupe_key,created_at) VALUES (${sqlText(crypto.randomUUID())},${sqlText(item.requester)},${sqlText(item.requestType)},${sqlText(item.task)},${sqlText(item.threadUrl)},${sqlText(item.askedAt)},${nullable(item.dueDate)},0,0,${sqlText(captureSource(item.source, item.dedupeKey))},${sqlText(item.dedupeKey)},${sqlText(now)});`);
   }
   for (const item of candidates) {
     required(item, ["dedupeKey", "ledger", "channelId", "messageTs", "text", "threadUrl", "reason"]);
@@ -187,7 +191,10 @@ function applyFastMonitorCycle(args) {
   }
   sql.push(`INSERT INTO monitor_runs (run_id,monitor_id,started_at,finished_at,ceiling_ts,conversations_checked,messages_checked,captured_count,candidate_count,outcome) VALUES (${sqlText(payload.runId)},${sqlText(payload.monitorId)},${sqlText(payload.startedAt)},${sqlText(payload.finishedAt)},${sqlText(payload.ceilingTs)},${Number(payload.conversationsChecked) || 0},${Number(payload.messagesChecked) || 0},${assignmentsToCapture.length + myTasksToCapture.length},${candidates.length},${sqlText(payload.outcome || "success")});`);
   executeFile(sql.join("\n"));
-  if (desktopNotificationsEnabled()) for (const item of myTasksToCapture) showDesktopNotification(item.requester, item.task);
+  if (desktopNotificationsEnabled()) {
+    for (const item of assignmentsToCapture) showDesktopNotification(`New assignment for ${item.assignee}`, item.assignment);
+    for (const item of myTasksToCapture) showDesktopNotification(`New task from ${item.requester}`, item.task);
+  }
   console.log(JSON.stringify({ assignments: assignmentsToCapture.length, myTasks: myTasksToCapture.length, candidates: candidates.length, cursors: Object.keys(cursors).length }));
 }
 
@@ -209,7 +216,7 @@ const command = args._[0];
 try {
   if (command === "capture-assignment") captureAssignment(args);
   else if (command === "capture-my-task") captureMyTask(args);
-  else if (command === "test-desktop-notification") { required(args, ["requester", "task"]); showDesktopNotification(args.requester, args.task); }
+  else if (command === "test-desktop-notification") { required(args, ["requester", "task"]); showDesktopNotification(`New task from ${args.requester}`, args.task); }
   else if (command === "update-assignment-insight") updateInsight(args, false);
   else if (command === "update-my-task-insight") updateInsight(args, true);
   else if (command === "get-checkpoint") getCheckpoint(args);

@@ -37,7 +37,7 @@ test("source defines inbound capture and durable checkpoint storage", async () =
   assert.match(tracker, /Desktop notifications/);
   assert.match(tracker, /api\/settings\/notifications/);
   assert.match(tracker, /even when the dashboard is closed/);
-  assert.match(tracker, /task\.source!=="manual"/);
+  assert.match(tracker, /entry\.source!=="manual"/);
   assert.match(tracker, /Monitor and notification settings/);
   assert.match(tracker, /Heartbeat monitor/);
   assert.match(tracker, /Fetch latest tasks & assignments/);
@@ -45,7 +45,13 @@ test("source defines inbound capture and durable checkpoint storage", async () =
   assert.match(tracker, /__local\/monitor\/run/);
   assert.match(tracker, /<small>Today<\/small>/);
   assert.match(tracker, /statusRows\.map/);
+  assert.match(tracker, /__local\/source\/webex/);
+  assert.match(tracker, /item\.source==="webex"/);
   assert.match(tracker, /href=\{item\.threadUrl\}/);
+  assert.match(tracker, /SourcePlatformIcon/);
+  assert.match(tracker, /platform==="Slack"/);
+  assert.match(tracker, /source==="webex"/);
+  assert.match(tracker, /Slack \+ Webex/);
   assert.doesNotMatch(tracker, /__assignment-ledger\/open-slack/);
   assert.match(tracker, /dateOnly\?new Date/);
   assert.match(myTasksRoute, /created_at AS createdAt/);
@@ -62,12 +68,14 @@ test("source defines inbound capture and durable checkpoint storage", async () =
   assert.match(heartbeat, /waiting_on_requester/);
 });
 
-test("listener emits cross-platform desktop notifications only for new inbound captures", () => {
+test("listener emits cross-platform desktop notifications for both ledgers", () => {
   const cli = readFileSync(resolve("scripts/ledger-cli.mjs"), "utf8");
   assert.match(cli, /desktop_notifications_enabled/);
   assert.match(cli, /Windows\.UI\.Notifications/);
   assert.match(cli, /osascript/);
   assert.match(cli, /!alreadyCaptured && desktopNotificationsEnabled\(\)/);
+  assert.match(cli, /New assignment for/);
+  assert.match(cli, /assignmentsToCapture/);
 });
 
 test("portable launcher exposes the friendly loopback-only hostname", async () => {
@@ -100,26 +108,42 @@ test("portable launcher exposes the friendly loopback-only hostname", async () =
   assert.match(proxy, /listenPort = 80/);
   assert.match(proxy, /__local\/monitor\/control/);
   assert.match(proxy, /__local\/monitor\/run/);
+  assert.match(proxy, /__local\/source\/webex/);
+  assert.match(proxy, /CiscoCollabHost\.exe/);
+  assert.match(proxy, /webexMessageUri/);
   assert.doesNotMatch(proxy, /slack:\/\/channel\?team=/);
   assert.doesNotMatch(proxy, /__assignment-ledger\/open-slack/);
   assert.match(configurator, /127\.0\.0\.1 \$\{hostname\}/);
 });
 
-test("portable fast listener uses authenticated Slack, changed conversations, locking, and batched local persistence", async () => {
-  const [monitor, client, manager, cli] = await Promise.all([
+test("portable fast listener uses authenticated Slack and Webex with durable cursors and batched local persistence", async () => {
+  const [monitor, client, webexClient, manager, cli] = await Promise.all([
     readFile(new URL("../scripts/slack-fast-monitor.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/slack-mcp-client.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/webex-mcp-client.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/manage-fast-monitor.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/ledger-cli.mjs", import.meta.url), "utf8"),
   ]);
   assert.match(client, /mcp_servers\\\.slack/);
+  assert.match(webexClient, /mcp_servers\\\.webex/);
+  assert.match(monitor, /connectWebexMcp/);
+  assert.match(monitor, /webex_rooms/);
+  assert.match(monitor, /webex_messages/);
+  assert.match(monitor, /webexteams:\/\/im\?space=.*&message=/);
+  assert.doesNotMatch(monitor, /web\.webex\.com\/l\/message/);
+  assert.match(monitor, /webex:room:/);
+  assert.match(monitor, /source: "webex"/);
+  assert.match(monitor, /source: "slack"/);
   assert.match(monitor, /fast-monitor\.lock/);
   assert.match(monitor, /activeIms/);
   assert.match(monitor, /apply-fast-monitor-cycle/);
   assert.match(monitor, /options\.full/);
+  assert.match(monitor, /latestCapturedSlackTs/);
+  assert.match(monitor, /conversationHistoryAll/);
   assert.match(monitor, /get-monitor-control/);
   assert.match(manager, /--watch/);
   assert.match(manager, /paused: true/);
   assert.match(cli, /heartbeat_monitor_enabled/);
+  assert.match(cli, /captureSource/);
   assert.match(cli, /resolve-monitor-candidate/);
 });

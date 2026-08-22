@@ -55,11 +55,11 @@ if (dashboardStart.status !== 0 || !(await isReady(backendAddress)) || !(await i
 
 const monitorStart = spawnSync(process.execPath, [join(projectPath, "scripts", "manage-fast-monitor.mjs"), "start"], { cwd: projectPath, encoding: "utf8", windowsHide: true });
 if (monitorStart.status !== 0) {
-  console.error("The fast Slack listener could not start. Run npm run monitor:fast:probe to verify the authenticated Slack connector.");
+  console.error("The fast Slack + Webex listener could not start. Run npm run monitor:fast:probe to verify both authenticated connectors.");
   console.error(monitorStart.stderr || monitorStart.stdout);
   process.exit(monitorStart.status || 1);
 }
 if (openOnLaunch) openBrowser();
 let monitorState = { paused: false };
 try { monitorState = JSON.parse(monitorStart.stdout.trim()); } catch { /* status already validated */ }
-console.log(`Assignment Ledger is running at ${address}. The Slack listener is ${monitorState.paused ? "paused" : "active"}.`);
+console.log(`Assignment Ledger is running at ${address}. The Slack + Webex listener is ${monitorState.paused ? "paused" : "active"}.`);

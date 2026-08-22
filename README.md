@@ -11,7 +11,7 @@ Developed and authored by **Brent Paddack** ([bpaddack@cisco.com](mailto:bpaddac
 
 ## Highlights
 
-- Five-minute high-confidence Slack listener with durable cursors and overlap
+- Five-minute high-confidence Slack + Webex listener with platform-specific durable cursors and overlap
 - Comprehensive recurring Codex reconciliation for context and progress evidence
 - Database-backed monitor pause/resume slider
 - Manual full 15-minute Slack fetch while monitoring is paused
@@ -96,7 +96,7 @@ The legacy PowerShell helpers remain available, but listener database writes are
 | `config/tracker.package.json` | Unconfigured installation template |
 | `db/` and `drizzle/` | D1 schema and migrations |
 | `scripts/ledger-cli.mjs` | Cross-platform local database write interface |
-| `scripts/slack-fast-monitor.mjs` | Five-minute high-confidence listener |
+| `scripts/slack-fast-monitor.mjs` | Five-minute high-confidence Slack + Webex listener |
 | `scripts/manage-fast-monitor.mjs` | Hidden background listener lifecycle |
 | `scripts/launch-dashboard.mjs` | Quiet dashboard/listener launcher |
 | `SETUP_WITH_CODEX.md` | Authoritative installation procedure |

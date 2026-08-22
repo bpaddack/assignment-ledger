@@ -15,6 +15,8 @@ const projectPath = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const manualStatePath = join(projectPath, "data", "assignment-ledger", "manual-monitor-run.json");
 const manualRunnerPath = join(projectPath, "scripts", "manual-monitor-runner.mjs");
 const monitorManagerPath = join(projectPath, "scripts", "manage-fast-monitor.mjs");
+const webexHostPath = join(process.env.ProgramFiles || "C:\\Program Files", "Cisco Spark", "CiscoCollabHost.exe");
+const webexMessageUri = /^webexteams:\/\/im\?space=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}&message=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 let manualChildPid = null;
 
 function json(response, status, value) {
@@ -51,6 +53,23 @@ export function createFriendlyProxy() {
           const result = spawnSync(process.execPath, [monitorManagerPath, enabled ? "start" : "stop"], { cwd: projectPath, encoding: "utf8", windowsHide: true });
           if (result.status !== 0) return json(response, 500, { error: (result.stderr || result.stdout || "Could not update listener process.").trim() });
           return json(response, 200, { enabled, listener: JSON.parse(result.stdout.trim()) });
+        } catch (error) { return json(response, 400, { error: error instanceof Error ? error.message : "Invalid request" }); }
+      });
+      return;
+    }
+    if (request.url === "/__local/source/webex" && request.method === "POST") {
+      if (request.headers.origin !== "http://tasks.localhost") return json(response, 403, { error: "Webex can only be opened from the local dashboard." });
+      if (request.headers["content-type"]?.split(";", 1)[0] !== "application/json") return json(response, 415, { error: "JSON is required." });
+      let body = "";
+      request.on("data", (chunk) => { body += chunk; if (body.length > 2048) request.destroy(); });
+      request.on("end", () => {
+        try {
+          const { uri } = JSON.parse(body || "{}");
+          if (!webexMessageUri.test(String(uri || ""))) return json(response, 400, { error: "A valid Webex message link is required." });
+          if (!existsSync(webexHostPath)) return json(response, 503, { error: "The installed Webex client was not found." });
+          const child = spawn(webexHostPath, [`/protocolUri=${uri}`], { cwd: dirname(webexHostPath), detached: true, windowsHide: false, stdio: "ignore" });
+          child.once("error", (error) => json(response, 500, { error: `Could not open Webex: ${error.message}` }));
+          child.once("spawn", () => { child.unref(); json(response, 200, { opened: true }); });
         } catch (error) { return json(response, 400, { error: error instanceof Error ? error.message : "Invalid request" }); }
       });
       return;
